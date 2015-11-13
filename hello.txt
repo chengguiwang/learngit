@@ -1,3 +1,5 @@
 this is a greeting file
 say hello to world
 on the other hand,hello world.
+
+creating a new branch is quick & simple.
