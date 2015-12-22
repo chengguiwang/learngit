@@ -1,1 +1,278 @@
-hello sdbsdksnkjn dksnkjndkjsn kjndjsnjn kjsndkj
+package com._16;
+
+import java.util.Enumeration;
+import java.util.Hashtable;
+
+import javax.naming.AuthenticationException;
+import javax.naming.Context;
+import javax.naming.NamingEnumeration;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.BasicAttribute;
+import javax.naming.directory.BasicAttributes;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.InitialDirContext;
+import javax.naming.directory.SearchControls;
+import javax.naming.directory.SearchResult;
+import javax.naming.ldap.Control;
+import javax.naming.ldap.InitialLdapContext;
+import javax.naming.ldap.LdapContext;
+
+public class LDAPAuthentication {
+	private final String URL = "ldap://127.0.0.1:389/";
+	private final String BASEDN = "dc=YY-PC,dc=com"; // 根据自己情况进行修改
+	private final String FACTORY = "com.sun.jndi.ldap.LdapCtxFactory";
+	private LdapContext ctx = null;
+	private final Control[] connCtls = null;
+
+	private void LDAP_connect() {
+		Hashtable<String, String> env = new Hashtable<String, String>();
+		env.put(Context.INITIAL_CONTEXT_FACTORY, FACTORY);
+		env.put(Context.PROVIDER_URL, URL);
+		env.put(Context.SECURITY_AUTHENTICATION, "simple");
+
+		String root = "cn=Manager,dc=YY-PC,dc=com"; // 根据自己情况修改
+		env.put(Context.SECURITY_PRINCIPAL, root); // 管理员
+		env.put(Context.SECURITY_CREDENTIALS, "secret"); // 管理员密码
+
+		try {
+			ctx = new InitialLdapContext(env, connCtls);
+			System.out.println("连接成功");
+
+		} catch (javax.naming.AuthenticationException e) {
+			System.out.println("连接失败：");
+			e.printStackTrace();
+		} catch (Exception e) {
+			System.out.println("连接出错：");
+			e.printStackTrace();
+		}
+
+	}
+
+	private void closeContext() {
+		if (ctx != null) {
+			try {
+				ctx.close();
+			} catch (NamingException e) {
+				e.printStackTrace();
+			}
+
+		}
+	}
+
+	private String getUserDN(String uid) {
+		String userDN = "";
+		LDAP_connect();
+		try {
+			SearchControls constraints = new SearchControls();
+			constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
+
+			NamingEnumeration<SearchResult> en = ctx.search("", "uid=" + uid,
+					constraints);
+
+			if (en == null || !en.hasMoreElements()) {
+				System.out.println("未找到该用户");
+			}
+			// maybe more than one element
+			while (en != null && en.hasMoreElements()) {
+				Object obj = en.nextElement();
+				if (obj instanceof SearchResult) {
+					SearchResult si = (SearchResult) obj;
+					userDN += si.getName();
+					userDN += "," + BASEDN;
+				} else {
+					System.out.println(obj);
+				}
+			}
+		} catch (Exception e) {
+			System.out.println("查找用户时产生异常。");
+			e.printStackTrace();
+		}
+
+		return userDN;
+	}
+
+	public boolean authenricate(String UID, String password) {
+		boolean valide = false;
+		String userDN = getUserDN(UID);
+
+		try {
+			ctx.addToEnvironment(Context.SECURITY_PRINCIPAL, userDN);
+			ctx.addToEnvironment(Context.SECURITY_CREDENTIALS, password);
+			ctx.reconnect(connCtls);
+			System.out.println(userDN + " 验证通过");
+			valide = true;
+		} catch (AuthenticationException e) {
+			System.out.println(userDN + " 验证失败");
+			System.out.println(e.toString());
+			valide = false;
+		} catch (NamingException e) {
+			System.out.println(userDN + " 验证失败");
+			valide = false;
+		}
+		closeContext();
+		return valide;
+	}
+
+	private boolean addUser(String usr, String pwd) {
+		LDAP_connect();
+		BasicAttributes attrs = new BasicAttributes();
+        BasicAttribute objclassSet = new BasicAttribute("objectClass");
+        objclassSet.add("top");
+        objclassSet.add("person");
+        objclassSet.add("organizationalPerson");
+        objclassSet.add("inetOrgPerson");
+        objclassSet.add("shadowAccount");
+        attrs.put(objclassSet);
+        
+        attrs.put("sn", usr);
+        attrs.put("cn", usr);
+        attrs.put("userPassword", pwd);
+        
+        attrs.put("displayName", usr);
+        attrs.put("givenName",usr);
+        attrs.put("shadowFlag", "1");
+        
+        attrs.put("description", "正常:1,冻结:2,删除:3");
+
+        try {
+			ctx.createSubcontext("uid="+usr+",ou=teacher,ou=person,dc=sufe,dc=YY-PC,dc=com", attrs);
+			System.out.println("成功");
+			return true;
+		} catch (NamingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			System.out.println("失败");
+			
+		}
+        closeContext();
+        return false;
+	}
+
+	private Boolean exist(String name){
+		try {
+			NamingEnumeration en = ctx.search(name, null);
+			return ( en!=null );
+		} catch (NamingException e) {
+			// TODO Auto-generated catch block
+			//e.printStackTrace();
+			//log.warn("查询失败！");
+			return false;
+		}
+	}
+
+	public static void main(String[] args) {
+		LDAPAuthentication ldap = new LDAPAuthentication();
+
+		ldap.LDAP_connect();
+
+		// if(ldap.authenricate("yorker", "secret") == true){
+		//
+		// System.out.println( "该用户认证成功" );
+		//
+		// }
+		ldap.addUser("yorker", "secret");
+		
+		//boolean s = ldap.exist("ou=users,dc=YY-PC,dc=com");
+		//System.out.println(s);
+		//
+		// ldap.find();
+		// ldap.getUserDN("YY-PC");
+		//add();
+	
+	}
+
+	/**
+	 * 查找所以的openLDAP里面的值
+	 */
+	public void find() {
+		String root = "dc=YY-PC,dc=com"; // root
+
+		Hashtable env = new Hashtable();
+		env.put(Context.INITIAL_CONTEXT_FACTORY,
+				"com.sun.jndi.ldap.LdapCtxFactory");
+		env.put(Context.PROVIDER_URL, "ldap://localhost:389/");
+		env.put(Context.SECURITY_AUTHENTICATION, "simple");
+		env.put(Context.SECURITY_PRINCIPAL,
+				"cn=Manager,dc=YY-PC,dc=com");
+		env.put(Context.SECURITY_CREDENTIALS, "secret");
+		DirContext ctx = null;
+
+		SearchControls constraints = new SearchControls();
+		constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
+		String deptPath = "ou=users,dc=YY-PC,dc=com";
+		try {
+			ctx = new InitialDirContext(env);
+			NamingEnumeration<SearchResult> en = ctx.search(deptPath, "uid=*",
+					constraints);
+			while (en != null && en.hasMoreElements()) {
+				Object obj = en.nextElement();
+				if (obj instanceof SearchResult) {
+					SearchResult si = (SearchResult) obj;
+
+					System.out.println("name:   " + si.getName());
+
+					Attributes attrs = si.getAttributes();
+					if (attrs == null) {
+						System.out.println("No   attributes ");
+					} else {
+						for (NamingEnumeration ae = attrs.getAll(); ae
+								.hasMoreElements();) {
+							Attribute attr = (Attribute) ae.next();
+							String attrId = attr.getID();
+
+							for (Enumeration vals = attr.getAll(); vals
+									.hasMoreElements();) {
+								System.out.print(attrId + ":   ");
+								Object o = vals.nextElement();
+								if (o instanceof byte[])
+									System.out.println(new String((byte[]) o));
+								else
+									System.out.println(o);
+							}
+						}
+					}
+				} else {
+					System.out.println(obj);
+				}
+				System.out.println();
+			}
+
+		} catch (NamingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	public static boolean add() {
+		String root = "dc=YY-PC,dc=com"; // root
+
+		Hashtable env = new Hashtable();
+		env.put(Context.INITIAL_CONTEXT_FACTORY,
+				"com.sun.jndi.ldap.LdapCtxFactory");
+		env.put(Context.PROVIDER_URL, "ldap://localhost:389/");
+		env.put(Context.SECURITY_AUTHENTICATION, "simple");
+		env.put(Context.SECURITY_PRINCIPAL,
+				"dc=YY-PC,dc=com");
+		env.put(Context.SECURITY_CREDENTIALS, "secret");
+		DirContext dc = null;
+		boolean result = true;
+		String name = "zhangsan";
+		BasicAttributes attrs = new BasicAttributes();
+		BasicAttribute attr = new BasicAttribute("objectclass");
+		attr.add("organizationUnit");
+		attrs.put(attr);
+		attrs.put("ou", name);
+
+		
+		try {
+			dc = new InitialDirContext(env);
+			dc.createSubcontext("ou=" + name + ",dc=YY-PC,dc=com",attrs);
+		} catch (NamingException e) {
+			e.printStackTrace();
+			result = false;
+		}
+		return result;
+	}
+}
